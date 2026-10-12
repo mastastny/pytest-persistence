@@ -2,6 +2,7 @@ import os
 import pickle
 from pprint import pformat
 from typing import Any
+import warnings
 
 import pytest
 from _pytest.fixtures import pytest_fixture_setup as fixture_result
@@ -22,18 +23,21 @@ class Plugin:
     Pytest persistence plugin
     """
 
-    output: dict[str, Any] = {
-        "session": {},
-        "package": {},
-        "module": {},
-        "class": {},
-        "function": {},
-        "workers": {},
-        "tests": {},
-    }
-    input: dict[str, Any] = {}
-    unable_to_pickle: set[tuple[str, str, str]] = set()
-    pickled_fixtures: set[tuple[str, str, str]] = set()
+    def __init__(self):
+        self.output: dict[str, Any] = {
+            "session": {},
+            "package": {},
+            "module": {},
+            "class": {},
+            "function": {},
+            "workers": {},
+            "tests": {},
+        }
+        self.input: dict[str, Any] = {}
+        self.unable_to_pickle: set[tuple[str, str, str]] = set()
+        self.pickled_fixtures: set[tuple[str, str, str]] = set()
+        self.excluded_fixtures: set[str] = set()
+        self.dependency_excluded_fixtures: dict[str, str] = {}
 
     def pytest_sessionstart(self, session):
         """
@@ -47,6 +51,58 @@ class Plugin:
         if file := session.config.getoption("--load"):
             with open(file, "rb") as f:
                 self.input = pickle.load(f)
+
+    def is_fixture_excluded(self, fixturedef):
+        """Check if a fixture has the @pytest_persistence.exclude decorator"""
+        return getattr(fixturedef.func, "_pytest_persistence_exclude", False)
+
+    def build_exclusion_set(self, fixturedef, fixture_manager):
+        """
+        Recursively check if a fixture or any of its dependencies are excluded.
+
+        Returns:
+            bool: True if this fixture or any of its dependencies are excluded
+        """
+        fixture_name = fixturedef.argname
+
+        if (
+            fixture_name in self.excluded_fixtures
+            or fixture_name in self.dependency_excluded_fixtures
+        ):
+            return True
+
+        is_explicitly_excluded = self.is_fixture_excluded(fixturedef)
+
+        if is_explicitly_excluded:
+            self.excluded_fixtures.add(fixture_name)
+
+        has_excluded_dependency = False
+        for arg_name in fixturedef.argnames:
+            try:
+                arg_fixturedef = fixture_manager._arg2fixturedefs.get(arg_name, [None])[
+                    0
+                ]
+                if arg_fixturedef and self.build_exclusion_set(
+                    arg_fixturedef, fixture_manager
+                ):
+                    has_excluded_dependency = True
+                    if not is_explicitly_excluded:
+                        self.dependency_excluded_fixtures[fixture_name] = arg_name
+            except (KeyError, IndexError, AttributeError):
+                continue
+
+        return is_explicitly_excluded or has_excluded_dependency
+
+    def emit_dependency_warnings(self):
+        """Emit warnings for fixtures excluded due to dependencies"""
+        for fixture_name, parent_name in sorted(
+            self.dependency_excluded_fixtures.items()
+        ):
+            warnings.warn(
+                f"Fixture '{fixture_name}' excluded due to dependency on excluded fixture '{parent_name}'",
+                UserWarning,
+                stacklevel=2,
+            )
 
     def check_output(self):
         """Check if output dict can be serialized"""
@@ -91,6 +147,10 @@ class Plugin:
         if session.config.getoption("collectonly"):
             # early return if we are run with --collect-only
             return
+
+        if session.config.getoption("--store"):
+            self.emit_dependency_warnings()
+
         if file := session.config.getoption("--store"):
             if worker := os.getenv("PYTEST_XDIST_WORKER"):
                 self.output_to_file(f"{file}_{worker}")
@@ -155,15 +215,26 @@ class Plugin:
             if result:
                 fixturedef.cached_result = (result, my_cache_key, None)
                 return result
+
         result = fixture_result(fixturedef, request)
 
         if request.config.getoption("--store"):
-            try:
-                pickle.dumps(result)
-                self.output["workers"].update({node_id: worker_id})
-                self.store_fixture(result, fixture_id, node_id, worker_id)
-            except Exception:
-                self.unable_to_pickle.add(fixture_id)
+            fixture_manager = request._fixturemanager
+            self.build_exclusion_set(fixturedef, fixture_manager)
+
+            fixture_name = fixturedef.argname
+            is_excluded = (
+                fixture_name in self.excluded_fixtures
+                or fixture_name in self.dependency_excluded_fixtures
+            )
+
+            if not is_excluded:
+                try:
+                    pickle.dumps(result)
+                    self.output["workers"].update({node_id: worker_id})
+                    self.store_fixture(result, fixture_id, node_id, worker_id)
+                except Exception:
+                    self.unable_to_pickle.add(fixture_id)
 
         return result
 
@@ -215,13 +286,17 @@ class Plugin:
                 if not getattr(fin, "__closure__", None):
                     continue
                 for cell in fin.__closure__:
-                    if hasattr(cell.cell_contents, "cached_result"):
+                    if hasattr(cell, "cell_contents") and hasattr(
+                        cell.cell_contents, "cached_result"
+                    ):
                         yield cell.cell_contents
 
         for k in list(stack.keys()):
             if k not in needed:
                 for i in fixtures(stack[k][0]):
                     i.cached_result = None
+                    if hasattr(i, "_finalizers"):
+                        i._finalizers.clear()
                 stack[k][0].clear()
 
 
