@@ -1,0 +1,5 @@
+{"id":"869c32f5-31cb-4dd1-81d5-25bfb24abdc2","ts":"2026-10-12T13:34:59.267Z","path":"/home/mstastny/Repos/pytest-persistence/pytest_persistence/__init__.py","version":"1.0.0","taskID":"2694bfd6-ac8e-4add-8989-7f44b608bbc3"}
+{"id":"6c6aae2c-92c0-4e4d-97ad-9708dbc2bf36","ts":"2026-10-12T13:35:53.622Z","path":"/home/mstastny/Repos/pytest-persistence/pytest_persistence/plugin.py","version":"1.0.0","taskID":"2694bfd6-ac8e-4add-8989-7f44b608bbc3"}
+{"id":"6623ef1c-cd1d-4d4b-ab2b-0026239bf8ae","ts":"2026-10-12T13:41:21.419Z","path":"/home/mstastny/Repos/pytest-persistence/tests/test_exclude.py","version":"1.0.0","taskID":"2694bfd6-ac8e-4add-8989-7f44b608bbc3"}
+{"id":"e4079d70-1b7d-4964-afb6-550847145aa8","ts":"2026-10-12T13:43:06.207Z","path":"/home/mstastny/Repos/pytest-persistence/README.md","version":"1.0.0","taskID":"2694bfd6-ac8e-4add-8989-7f44b608bbc3"}
+{"id":"429e9948-082c-4f57-b0b2-61f7fa027de3","ts":"2026-10-12T13:47:38.010Z","path":"/home/mstastny/Repos/pytest-persistence/example_exclude_usage.py","version":"1.0.0","taskID":"2694bfd6-ac8e-4add-8989-7f44b608bbc3"}
