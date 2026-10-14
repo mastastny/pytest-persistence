@@ -286,7 +286,9 @@ class Plugin:
                 if not getattr(fin, "__closure__", None):
                     continue
                 for cell in fin.__closure__:
-                    if hasattr(cell.cell_contents, "cached_result"):
+                    if hasattr(cell, "cell_contents") and hasattr(
+                        cell.cell_contents, "cached_result"
+                    ):
                         yield cell.cell_contents
 
         for k in list(stack.keys()):
